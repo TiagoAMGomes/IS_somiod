@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Web.Http;
 using System.Xml.Linq;
 using SomiodAPI.Models;
+using Application = SomiodAPI.Models.Application;
 
 namespace SomiodAPI.Controllers
 {
@@ -46,10 +47,6 @@ namespace SomiodAPI.Controllers
 
 						reader.Close();
 
-						if (applications == null)
-						{
-							return NotFound();
-						}
 						XElement xmlData;
 
 						if (Request.Headers.TryGetValues("somiod-discover", out var headerValues) && headerValues.FirstOrDefault().ToLower().Equals("application"))
@@ -89,70 +86,122 @@ namespace SomiodAPI.Controllers
 		[Route("api/somiod/{appName}")]
 		public IHttpActionResult Get(string appName)
 		{
-			string queryString = $"SELECT * FROM applications WHERE name = '{appName}'";
-
-			try
+			if (Request.Headers.TryGetValues("somiod-discover", out var headerValues) && headerValues.FirstOrDefault().ToLower().Equals("containers"))
 			{
-				using (SqlConnection connection = new SqlConnection(connStr))
+				List<Container> containers = new List<Container>();
+
+				string queryString = $"SELECT containers.name FROM containers " +
+					$"JOIN applications ON containers.parent = applications.id " +
+					$"WHERE applications.name = '{appName}'";
+
+				try
 				{
-					SqlCommand command = new SqlCommand(queryString, connection);
-
-					try
+					using (SqlConnection connection = new SqlConnection(connStr))
 					{
-						command.Connection.Open();
-						SqlDataReader reader = command.ExecuteReader();
+						SqlCommand command = new SqlCommand(queryString, connection);
 
-						if (reader.Read())
+						try
 						{
-							Application application = new Application
+							command.Connection.Open();
+							SqlDataReader reader = command.ExecuteReader();
+
+							while (reader.Read())
 							{
-								Id = (int)reader["id"],
-								Name = (string)reader["name"],
-								Creation_dt = (DateTime)reader["creation_dt"]
-							};
+								Container container = new Container
+								{
+									Name = (string)reader["name"]
+								};
+
+								containers.Add(container);
+							}
 
 							reader.Close();
 
-							XElement xmlData = new XElement("applications",
-								new XElement("application",
-									new XElement("id", application.Id),
-									new XElement("name", application.Name),
-									new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
-								)
+							XElement xmlData = new XElement("containers",
+								from cont in containers
+								select new XElement("name", cont.Name)
 							);
 
 							return Ok(xmlData);
 						}
-						else
+						catch (SqlException)
 						{
-							reader.Close();
-							return NotFound();
+							throw;
 						}
 					}
-					catch (SqlException)
-					{
-						throw;
-					}
+				}
+				catch (Exception)
+				{
+					throw;
 				}
 			}
-			catch (Exception)
+			else
 			{
-				throw;
+				string queryString = $"SELECT * FROM applications WHERE name = '{appName}'";
+
+				try
+				{
+					using (SqlConnection connection = new SqlConnection(connStr))
+					{
+						SqlCommand command = new SqlCommand(queryString, connection);
+
+						try
+						{
+							command.Connection.Open();
+							SqlDataReader reader = command.ExecuteReader();
+
+							if (reader.Read())
+							{
+								Application application = new Application
+								{
+									Id = (int)reader["id"],
+									Name = (string)reader["name"],
+									Creation_dt = (DateTime)reader["creation_dt"]
+								};
+
+								reader.Close();
+
+								XElement xmlData = new XElement("applications",
+									new XElement("application",
+										new XElement("id", application.Id),
+										new XElement("name", application.Name),
+										new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+									)
+								);
+
+								return Ok(xmlData);
+							}
+							else
+							{
+								reader.Close();
+								return NotFound();
+							}
+						}
+						catch (SqlException)
+						{
+							throw;
+						}
+					}
+				}
+				catch (Exception)
+				{
+					throw;
+				}
 			}
 		}
 
-		// POST: api/Application
+		// POST: api/somiod
 		public void Post([FromBody]string value)
         {
         }
 
-        // PUT: api/Application/5
-        public void Put(int id, [FromBody]string value)
+		// PUT: api/somiod/{appName}
+		public void Put(int id, [FromBody]string value)
         {
         }
 
-        // DELETE: api/Application/5
-        public void Delete(int id)
+		// DELETE: api/somiod/{appName}
+		public void Delete(int id)
         {
         }
     }
