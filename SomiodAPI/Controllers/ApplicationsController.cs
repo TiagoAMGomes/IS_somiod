@@ -219,7 +219,6 @@ namespace SomiodAPI.Controllers
 		{
 			try
 			{
-				// Extract data from XML input
 				string appName = xmlInput.Element("name")?.Value;
 
 				if (string.IsNullOrWhiteSpace(appName))
@@ -227,14 +226,11 @@ namespace SomiodAPI.Controllers
 					return BadRequest("Invalid XML format. 'name' element is required.");
 				}
 
-				// Check if the name is unique
 				if (!IsNameUnique(appName))
 				{
-					// If not unique, generate a unique name
 					appName = GenerateUniqueName(appName);
 				}
 
-				// Insert data into the database
 				using (SqlConnection connection = new SqlConnection(connStr))
 				{
 					string insertQueryString = $"INSERT INTO applications (name) VALUES ('{appName}')";
@@ -250,7 +246,6 @@ namespace SomiodAPI.Controllers
 
 						if (rowsAffected > 0)
 						{
-							// If application is created successfully, retrieve the created application details
 							SqlDataReader reader = selectCommand.ExecuteReader();
 
 							if (reader.Read())
@@ -303,11 +298,9 @@ namespace SomiodAPI.Controllers
 
 				if (!IsNameUnique(newAppName))
 				{
-					// If not unique, generate a unique name
 					newAppName = GenerateUniqueName(newAppName);
 				}
 
-				// Update data in the database
 				using (SqlConnection connection = new SqlConnection(connStr))
 				{
 					string updateQueryString = $"UPDATE applications SET name = '{newAppName}' WHERE name = '{appName}'";
@@ -324,7 +317,6 @@ namespace SomiodAPI.Controllers
 
 						if (rowsAffected > 0)
 						{
-							// If application is updated successfully, retrieve the updated application details
 							selectCommand.Connection.Open();
 							SqlDataReader reader = selectCommand.ExecuteReader();
 
@@ -364,9 +356,63 @@ namespace SomiodAPI.Controllers
 		}
 
 		// DELETE: api/somiod/{appName}
-		public void Delete(int id)
-        {
-        }
+		[Route("api/somiod/{appName}")]
+		public IHttpActionResult Delete(string appName)
+		{
+			try
+			{
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					string selectQueryString = $"SELECT * FROM applications WHERE name = '{appName}'";
+					string deleteQueryString = $"DELETE FROM applications WHERE name = '{appName}'";
+
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+					SqlCommand deleteCommand = new SqlCommand(deleteQueryString, connection);
+
+					try
+					{
+						selectCommand.Connection.Open();
+						SqlDataReader reader = selectCommand.ExecuteReader();
+
+						if (reader.Read())
+						{
+							Application deletedApp = new Application
+							{
+								Id = (int)reader["id"],
+								Name = (string)reader["name"],
+								Creation_dt = (DateTime)reader["creation_dt"]
+							};
+
+							reader.Close();
+
+							selectCommand.Connection.Close();
+							deleteCommand.Connection.Open();
+							int rowsAffected = deleteCommand.ExecuteNonQuery();
+
+							if (rowsAffected > 0)
+							{
+								XElement xmlData = new XElement("application",
+									new XElement("id", deletedApp.Id),
+									new XElement("name", deletedApp.Name),
+									new XElement("creation_dt", deletedApp.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+								);
+								return Ok(xmlData);
+							}
+						}
+
+						return NotFound();
+					}
+					catch (Exception)
+					{
+						throw;
+					}
+				}
+			}
+			catch (Exception)
+			{
+				throw;
+			}
+		}
 
 
 		// -----> HELPER FUNCTIONS <-----
