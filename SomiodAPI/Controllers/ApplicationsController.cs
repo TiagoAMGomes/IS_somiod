@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Net;
@@ -72,13 +73,13 @@ namespace SomiodAPI.Controllers
 					}
 					catch (SqlException)
 					{
-						throw;
+						return InternalServerError();
 					}
 				}
 			}
 			catch (Exception)
 			{
-				throw;
+				return InternalServerError();
 			}
 		}
 
@@ -86,69 +87,171 @@ namespace SomiodAPI.Controllers
 		[Route("api/somiod/{appName}")]
 		public IHttpActionResult Get(string appName)
 		{
-			if (Request.Headers.TryGetValues("somiod-discover", out var headerValues) && headerValues.FirstOrDefault().ToLower().Equals("containers"))
+			try
 			{
-				List<Container> containers = new List<Container>();
-
-				string queryString = $"SELECT containers.name FROM containers " +
-					$"JOIN applications ON containers.parent = applications.id " +
-					$"WHERE applications.name = '{appName}'";
-
-				try
+				using (SqlConnection connection = new SqlConnection(connStr))
 				{
-					using (SqlConnection connection = new SqlConnection(connStr))
+					string queryStr = $"SELECT * FROM applications WHERE name = '{appName}'";
+					SqlCommand command = new SqlCommand(queryStr, connection);
+
+					try
 					{
-						SqlCommand command = new SqlCommand(queryString, connection);
+						command.Connection.Open();
+						SqlDataReader reader = command.ExecuteReader();
 
-						try
+						if (!reader.Read())
 						{
-							command.Connection.Open();
-							SqlDataReader reader = command.ExecuteReader();
-
-							while (reader.Read())
-							{
-								Container container = new Container
-								{
-									Name = (string)reader["name"]
-								};
-
-								containers.Add(container);
-							}
-
+							command.Connection.Close();
 							reader.Close();
-
-							XElement xmlData = new XElement("containers",
-								from cont in containers
-								select new XElement("name", cont.Name)
-							);
-
-							return Ok(xmlData);
+							return NotFound();
 						}
-						catch (SqlException)
+
+						command.Connection.Close();
+						reader.Close();
+
+						if (Request.Headers.TryGetValues("somiod-discover", out var headerValues) && headerValues.FirstOrDefault().ToLower().Equals("container"))
 						{
-							throw;
+							return GetContainerData(connection, appName);
+						}
+						else
+						{
+							return GetApplicationData(connection, appName);
 						}
 					}
-				}
-				catch (Exception)
-				{
-					throw;
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
 				}
 			}
-			else
+			catch (Exception)
 			{
-				string queryString = $"SELECT * FROM applications WHERE name = '{appName}'";
+				return InternalServerError();
+			}
+		}
 
-				try
+		private IHttpActionResult GetContainerData(SqlConnection connection, string appName)
+		{
+			List<Container> containers = new List<Container>();
+
+			string queryString = $"SELECT containers.name FROM containers " +
+								 $"JOIN applications ON containers.parent = applications.id " +
+								 $"WHERE applications.name = '{appName}'";
+
+			SqlCommand command = new SqlCommand(queryString, connection);
+
+			try
+			{
+				command.Connection.Open();
+				SqlDataReader reader = command.ExecuteReader();
+
+				while (reader.Read())
 				{
-					using (SqlConnection connection = new SqlConnection(connStr))
+					Container container = new Container
 					{
-						SqlCommand command = new SqlCommand(queryString, connection);
+						Name = (string)reader["name"]
+					};
 
-						try
+					containers.Add(container);
+				}
+
+				reader.Close();
+
+				XElement xmlData = new XElement("containers",
+					from cont in containers
+					select new XElement("name", cont.Name)
+				);
+
+				return Ok(xmlData);
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		private IHttpActionResult GetApplicationData(SqlConnection connection, string appName)
+		{
+			string queryString = $"SELECT * FROM applications WHERE name = '{appName}'";
+			SqlCommand command = new SqlCommand(queryString, connection);
+
+			try
+			{
+				command.Connection.Open();
+				SqlDataReader reader = command.ExecuteReader();
+
+				if (reader.Read())
+				{
+					Application application = new Application
+					{
+						Id = (int)reader["id"],
+						Name = (string)reader["name"],
+						Creation_dt = (DateTime)reader["creation_dt"]
+					};
+
+					reader.Close();
+
+					XElement xmlData = new XElement("applications",
+						new XElement("application",
+							new XElement("id", application.Id),
+							new XElement("name", application.Name),
+							new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+						)
+					);
+
+					return Ok(xmlData);
+				}
+				else
+				{
+					reader.Close();
+					return NotFound();
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		// POST: api/somiod
+		[Route("api/somiod")]
+		public IHttpActionResult Post([FromBody] XElement xmlInput)
+		{
+			try
+			{
+				// Extract data from XML input
+				string appName = xmlInput.Element("name")?.Value;
+
+				if (string.IsNullOrWhiteSpace(appName))
+				{
+					return BadRequest("Invalid XML format. 'name' element is required.");
+				}
+
+				// Check if the name is unique
+				if (!IsNameUnique(appName))
+				{
+					// If not unique, generate a unique name
+					appName = GenerateUniqueName(appName);
+				}
+
+				// Insert data into the database
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					string insertQueryString = $"INSERT INTO applications (name) VALUES ('{appName}')";
+					string selectQueryString = $"SELECT * FROM applications WHERE name = '{appName}'";
+
+					SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+					try
+					{
+						insertCommand.Connection.Open();
+						int rowsAffected = insertCommand.ExecuteNonQuery();
+
+						if (rowsAffected > 0)
 						{
-							command.Connection.Open();
-							SqlDataReader reader = command.ExecuteReader();
+							// If application is created successfully, retrieve the created application details
+							SqlDataReader reader = selectCommand.ExecuteReader();
 
 							if (reader.Read())
 							{
@@ -161,27 +264,125 @@ namespace SomiodAPI.Controllers
 
 								reader.Close();
 
-								XElement xmlData = new XElement("applications",
-									new XElement("application",
-										new XElement("id", application.Id),
-										new XElement("name", application.Name),
-										new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
-									)
+								XElement xmlData = new XElement("application",
+									new XElement("id", application.Id),
+									new XElement("name", application.Name),
+									new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
 								);
 
 								return Ok(xmlData);
 							}
-							else
+						}
+
+						return InternalServerError(new Exception("Failed to create application or retrieve application details."));
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		// PUT: api/somiod/{appName}
+		[Route("api/somiod/{appName}")]
+		public IHttpActionResult Put(string appName, [FromBody] XElement xmlInput)
+		{
+			try
+			{
+				string newAppName = xmlInput.Element("name")?.Value;
+
+				if (string.IsNullOrWhiteSpace(newAppName))
+				{
+					return BadRequest("Invalid XML format. 'name' element is required.");
+				}
+
+				if (!IsNameUnique(newAppName))
+				{
+					// If not unique, generate a unique name
+					newAppName = GenerateUniqueName(newAppName);
+				}
+
+				// Update data in the database
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					string updateQueryString = $"UPDATE applications SET name = '{newAppName}' WHERE name = '{appName}'";
+					string selectQueryString = $"SELECT * FROM applications WHERE name = '{newAppName}'";
+
+					SqlCommand updateCommand = new SqlCommand(updateQueryString, connection);
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+					try
+					{
+						updateCommand.Connection.Open();
+						int rowsAffected = updateCommand.ExecuteNonQuery();
+						updateCommand.Connection.Close();
+
+						if (rowsAffected > 0)
+						{
+							// If application is updated successfully, retrieve the updated application details
+							selectCommand.Connection.Open();
+							SqlDataReader reader = selectCommand.ExecuteReader();
+
+							if (reader.Read())
 							{
+								Application application = new Application
+								{
+									Id = (int)reader["id"],
+									Name = (string)reader["name"],
+									Creation_dt = (DateTime)reader["creation_dt"]
+								};
+
 								reader.Close();
-								return NotFound();
+
+								XElement xmlData = new XElement("application",
+									new XElement("id", application.Id),
+									new XElement("name", application.Name),
+									new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+								);
+
+								return Ok(xmlData);
 							}
 						}
-						catch (SqlException)
-						{
-							throw;
-						}
+
+						return NotFound();
 					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		// DELETE: api/somiod/{appName}
+		public void Delete(int id)
+        {
+        }
+
+
+		// -----> HELPER FUNCTIONS <-----
+
+		private bool IsNameUnique(string appName)
+		{
+			using (SqlConnection connection = new SqlConnection(connStr))
+			{
+				string queryString = $"SELECT COUNT(*) FROM applications WHERE name = '{appName}'";
+				SqlCommand command = new SqlCommand(queryString, connection);
+
+				try
+				{
+					command.Connection.Open();
+					int count = (int)command.ExecuteScalar();
+					return count == 0;
 				}
 				catch (Exception)
 				{
@@ -190,19 +391,9 @@ namespace SomiodAPI.Controllers
 			}
 		}
 
-		// POST: api/somiod
-		public void Post([FromBody]string value)
-        {
-        }
-
-		// PUT: api/somiod/{appName}
-		public void Put(int id, [FromBody]string value)
-        {
-        }
-
-		// DELETE: api/somiod/{appName}
-		public void Delete(int id)
-        {
-        }
-    }
+		private string GenerateUniqueName(string baseName)
+		{
+			return $"{baseName}_{DateTime.Now.Ticks}";
+		}
+	}
 }
