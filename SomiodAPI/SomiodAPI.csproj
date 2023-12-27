@@ -95,6 +95,7 @@
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
+    <Compile Include="Helpers\HelperFunctions.cs" />
     <Compile Include="Models\Application.cs" />
     <Compile Include="Models\Container.cs" />
     <Compile Include="Models\Data.cs" />
@@ -126,6 +127,7 @@
   <ItemGroup>
     <Folder Include="Data\" />
     <Folder Include="Views\Application\" />
+    <Folder Include="Views\Containers\" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
