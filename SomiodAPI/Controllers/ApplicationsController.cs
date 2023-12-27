@@ -191,12 +191,10 @@ namespace SomiodAPI.Controllers
 
 					reader.Close();
 
-					XElement xmlData = new XElement("applications",
-						new XElement("application",
-							new XElement("id", application.Id),
-							new XElement("name", application.Name),
-							new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
-						)
+					XElement xmlData = new XElement("application",
+						new XElement("id", application.Id),
+						new XElement("name", application.Name),
+						new XElement("creation_dt", application.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
 					);
 
 					return Ok(xmlData);
@@ -424,47 +422,153 @@ namespace SomiodAPI.Controllers
 					return NotFound();
 				}
 
+				if (HelperFunctions.IsContainerNameUnique(appName, containerName, connStr))
+				{
+					return NotFound();
+				}
+
 				using (SqlConnection connection = new SqlConnection(connStr))
 				{
-					string selectQueryString = $"SELECT * FROM containers WHERE name = '{containerName}' AND parent = (SELECT id FROM applications WHERE name = '{appName}')";
-
-					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
-
-					try
+					if (Request.Headers.TryGetValues("somiod-discover", out var headerValues))
 					{
-						connection.Open();
-						SqlDataReader reader = selectCommand.ExecuteReader();
-
-						if (reader.Read())
+						if (headerValues.FirstOrDefault().ToLower().Equals("data"))
 						{
-							Container container = new Container
-							{
-								Id = (int)reader["id"],
-								Name = (string)reader["name"],
-								Creation_dt = (DateTime)reader["creation_dt"],
-								Parent = (int)reader["parent"]
-							};
-
-							reader.Close();
-
-							XElement xmlData = new XElement("container",
-								new XElement("id", container.Id),
-								new XElement("name", container.Name),
-								new XElement("creation_dt", container.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
-								new XElement("parent", container.Parent)
-							);
-
-							return Ok(xmlData);
+							return GetDataData(connection, appName, containerName);
 						}
-						else
+						else if (headerValues.FirstOrDefault().ToLower().Equals("subscription"))
 						{
-							return NotFound();
+							return GetSubscriptionData(connection, appName, containerName);
 						}
 					}
-					catch (Exception)
+					
+					return GetContainer(connection, appName, containerName);
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		private IHttpActionResult GetDataData(SqlConnection connection, string appName, string containerName)
+		{
+			List<Data> datas = new List<Data>();
+
+			string selectQueryString = $"SELECT data.content FROM data " +
+				$"JOIN containers ON data.parent = containers.id " +
+				$"JOIN applications ON containers.parent = applications.id " +
+				$"WHERE containers.name = '{containerName}' " +
+				$"AND applications.name = '{appName}'";
+
+			SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+			try
+			{
+				connection.Open();
+				SqlDataReader reader = selectCommand.ExecuteReader();
+
+				while (reader.Read())
+				{
+					Data data = new Data
 					{
-						return InternalServerError();
-					}
+						Content = (string)reader["content"]
+					};
+
+					datas.Add(data);
+				}
+
+				reader.Close();
+
+				XElement xmlData = new XElement("data",
+					from data in datas
+					select new XElement("content", data.Content)
+				);
+
+				return Ok(xmlData);
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		private IHttpActionResult GetSubscriptionData(SqlConnection connection, string appName, string containerName)
+		{
+			List<Subscription> subscriptions = new List<Subscription>();
+
+			string selectQueryString = $"SELECT subscriptions.name FROM subscriptions " +
+				$"JOIN containers ON subscriptions.parent = containers.id " +
+				$"JOIN applications ON containers.parent = applications.id " +
+				$"WHERE containers.name = '{containerName}' " +
+				$"AND applications.name = '{appName}'";
+
+			SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+			try
+			{
+				connection.Open();
+				SqlDataReader reader = selectCommand.ExecuteReader();
+
+				while (reader.Read())
+				{
+					Subscription subscription = new Subscription
+					{
+						Name = (string)reader["name"]
+					};
+
+					subscriptions.Add(subscription);
+				}
+
+				reader.Close();
+
+				XElement xmlData = new XElement("subscriptions",
+					from sub in subscriptions
+					select new XElement("name", sub.Name)
+				);
+
+				return Ok(xmlData);
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		private IHttpActionResult GetContainer(SqlConnection connection, string appName, string containerName)
+		{
+			string selectQueryString = $"SELECT * FROM containers WHERE name = '{containerName}' AND parent = (SELECT id FROM applications WHERE name = '{appName}')";
+
+			SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+			try
+			{
+				connection.Open();
+				SqlDataReader reader = selectCommand.ExecuteReader();
+
+				if (reader.Read())
+				{
+					Container container = new Container
+					{
+						Id = (int)reader["id"],
+						Name = (string)reader["name"],
+						Creation_dt = (DateTime)reader["creation_dt"],
+						Parent = (int)reader["parent"]
+					};
+
+					reader.Close();
+
+					XElement xmlData = new XElement("container",
+						new XElement("id", container.Id),
+						new XElement("name", container.Name),
+						new XElement("creation_dt", container.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
+						new XElement("parent", container.Parent)
+					);
+
+					return Ok(xmlData);
+				}
+				else
+				{
+					return NotFound();
 				}
 			}
 			catch (Exception)
@@ -704,6 +808,5 @@ namespace SomiodAPI.Controllers
 				return InternalServerError();
 			}
 		}
-
 	}
 }
