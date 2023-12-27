@@ -633,9 +633,8 @@ namespace SomiodAPI.Controllers
 		}
 
 		// DELETE: api/somiod/{appName}/{containerName}
-		[HttpDelete]
 		[Route("{appName}/{containerName}")]
-		public IHttpActionResult DeleteContainer(string appName, string containerName)
+		public IHttpActionResult Delete(string appName, string containerName)
 		{
 			try
 			{
