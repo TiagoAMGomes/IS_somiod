@@ -35,7 +35,7 @@ namespace SomiodAPI.Controllers
 
 					try
 					{
-						command.Connection.Open();
+						connection.Open();
 						SqlDataReader reader = command.ExecuteReader();
 
 						while (reader.Read())
@@ -100,17 +100,15 @@ namespace SomiodAPI.Controllers
 
 					try
 					{
-						command.Connection.Open();
+						connection.Open();
 						SqlDataReader reader = command.ExecuteReader();
 
 						if (!reader.Read())
 						{
-							command.Connection.Close();
 							reader.Close();
 							return NotFound();
 						}
 
-						command.Connection.Close();
 						reader.Close();
 
 						if (Request.Headers.TryGetValues("somiod-discover", out var headerValues) && headerValues.FirstOrDefault().ToLower().Equals("container"))
@@ -146,7 +144,6 @@ namespace SomiodAPI.Controllers
 
 			try
 			{
-				command.Connection.Open();
 				SqlDataReader reader = command.ExecuteReader();
 
 				while (reader.Read())
@@ -181,7 +178,6 @@ namespace SomiodAPI.Controllers
 
 			try
 			{
-				command.Connection.Open();
 				SqlDataReader reader = command.ExecuteReader();
 
 				if (reader.Read())
@@ -245,7 +241,7 @@ namespace SomiodAPI.Controllers
 
 					try
 					{
-						insertCommand.Connection.Open();
+						connection.Open();
 						int rowsAffected = insertCommand.ExecuteNonQuery();
 
 						if (rowsAffected > 0)
@@ -315,13 +311,11 @@ namespace SomiodAPI.Controllers
 
 					try
 					{
-						updateCommand.Connection.Open();
+						connection.Open();
 						int rowsAffected = updateCommand.ExecuteNonQuery();
-						updateCommand.Connection.Close();
 
 						if (rowsAffected > 0)
 						{
-							selectCommand.Connection.Open();
 							SqlDataReader reader = selectCommand.ExecuteReader();
 
 							if (reader.Read())
@@ -375,7 +369,7 @@ namespace SomiodAPI.Controllers
 
 					try
 					{
-						selectCommand.Connection.Open();
+						connection.Open();
 						SqlDataReader reader = selectCommand.ExecuteReader();
 
 						if (reader.Read())
@@ -389,8 +383,6 @@ namespace SomiodAPI.Controllers
 
 							reader.Close();
 
-							selectCommand.Connection.Close();
-							deleteCommand.Connection.Open();
 							int rowsAffected = deleteCommand.ExecuteNonQuery();
 
 							if (rowsAffected > 0)
@@ -557,5 +549,162 @@ namespace SomiodAPI.Controllers
 				return InternalServerError();
 			}
 		}
+
+		// PUT: api/somiod/{appName}/{containerName}
+		[Route("{appName}/{containerName}")]
+		public IHttpActionResult Put(string appName, string containerName, [FromBody] XElement xmlInput)
+		{
+			try
+			{
+				if (HelperFunctions.IsAppNameUnique(appName, connStr))
+				{
+					return NotFound();
+				}
+
+				if (HelperFunctions.IsContainerNameUnique(appName, containerName, connStr))
+				{
+					return NotFound();
+				}
+
+				string newContainerName = xmlInput.Element("name")?.Value;
+
+				if (string.IsNullOrWhiteSpace(newContainerName))
+				{
+					return BadRequest("Invalid XML format. 'name' element is required.");
+				}
+
+				if (!HelperFunctions.IsContainerNameUnique(appName, newContainerName, connStr))
+				{
+					newContainerName = HelperFunctions.GenerateUniqueName(newContainerName);
+				}
+
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					string updateQueryString = $"UPDATE containers SET name = '{newContainerName}' WHERE name = '{containerName}' AND parent = (SELECT id FROM applications WHERE name = '{appName}')";
+					string selectQueryString = $"SELECT * FROM containers WHERE name = '{newContainerName}' AND parent = (SELECT id FROM applications WHERE name = '{appName}')";
+
+					SqlCommand updateCommand = new SqlCommand(updateQueryString, connection);
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+					try
+					{
+						connection.Open();
+						int rowsAffected = updateCommand.ExecuteNonQuery();
+
+						if (rowsAffected > 0)
+						{
+							SqlDataReader reader = selectCommand.ExecuteReader();
+
+							if (reader.Read())
+							{
+								Container updatedContainer = new Container
+								{
+									Id = (int)reader["id"],
+									Name = (string)reader["name"],
+									Creation_dt = (DateTime)reader["creation_dt"],
+									Parent = (int)reader["parent"]
+								};
+
+								reader.Close();
+
+								XElement xmlData = new XElement("container",
+									new XElement("id", updatedContainer.Id),
+									new XElement("name", updatedContainer.Name),
+									new XElement("creation_dt", updatedContainer.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
+									new XElement("parent", updatedContainer.Parent)
+								);
+
+								return Ok(xmlData);
+							}
+						}
+
+						return NotFound();
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		// DELETE: api/somiod/{appName}/{containerName}
+		[HttpDelete]
+		[Route("{appName}/{containerName}")]
+		public IHttpActionResult DeleteContainer(string appName, string containerName)
+		{
+			try
+			{
+				if (HelperFunctions.IsAppNameUnique(appName, connStr))
+				{
+					return NotFound();
+				}
+
+				if (HelperFunctions.IsContainerNameUnique(appName, containerName, connStr))
+				{
+					return NotFound();
+				}
+
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					string selectQueryString = $"SELECT * FROM containers WHERE name = '{containerName}' AND parent = (SELECT id FROM applications WHERE name = '{appName}')";
+
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+					try
+					{
+						connection.Open();
+
+						SqlDataReader reader = selectCommand.ExecuteReader();
+
+						if (reader.Read())
+						{
+							Container deletedContainer = new Container
+							{
+								Id = (int)reader["id"],
+								Name = (string)reader["name"],
+								Creation_dt = (DateTime)reader["creation_dt"],
+								Parent = (int)reader["parent"]
+							};
+
+							reader.Close();
+
+							string deleteQueryString = $"DELETE FROM containers WHERE name = '{containerName}' AND parent = (SELECT id FROM applications WHERE name = '{appName}')";
+
+							SqlCommand deleteCommand = new SqlCommand(deleteQueryString, connection);
+
+							int rowsAffected = deleteCommand.ExecuteNonQuery();
+
+							if (rowsAffected > 0)
+							{
+								XElement xmlData = new XElement("container",
+									new XElement("id", deletedContainer.Id),
+									new XElement("name", deletedContainer.Name),
+									new XElement("creation_dt", deletedContainer.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
+									new XElement("parent", deletedContainer.Parent)
+								);
+
+								return Ok(xmlData);
+							}
+						}
+
+						return NotFound();
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
 	}
 }
