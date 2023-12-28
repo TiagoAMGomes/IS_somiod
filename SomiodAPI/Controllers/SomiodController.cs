@@ -15,7 +15,7 @@ namespace SomiodAPI.Controllers
     {
 		string connStr = Properties.Settings.Default.ConnStr;
 
-		// --------------------> APPLICATIONS <--------------------
+		// ----------------------------------------> APPLICATIONS <----------------------------------------
 
 		// GET: api/somiod
 		[Route("")]
@@ -406,7 +406,7 @@ namespace SomiodAPI.Controllers
 		}
 
 
-		// --------------------> CONTAINERS <--------------------
+		// ----------------------------------------> CONTAINERS <----------------------------------------
 
 		// GET: api/somiod/{appName}/{containerName}
 		[Route("{appName}/{containerName}")]
