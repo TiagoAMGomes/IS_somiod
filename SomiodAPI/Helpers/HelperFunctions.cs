@@ -49,6 +49,19 @@ namespace SomiodAPI.Helpers
 			}
 		}
 
+		public static bool IsContentUniqueInContainer(string appName, string containerName, string content, SqlConnection connection)
+		{
+			string checkQueryString = $"SELECT COUNT(*) FROM data WHERE content = '{content}' " +
+				$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
+				$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
+
+			SqlCommand checkCommand = new SqlCommand(checkQueryString, connection);
+
+			int count = (int)checkCommand.ExecuteScalar();
+
+			return count == 0;
+		}
+
 		public static string GenerateUniqueName(string baseName)
 		{
 			return $"{baseName}_{DateTime.Now.Ticks}";
