@@ -154,7 +154,7 @@ namespace SomiodAPI.Controllers
 				{
 					connection.Open();
 
-					if (!HelperFunctions.IsContentUniqueInContainer(appName, containerName, content, connection))
+					if (!HelperFunctions.IsDataContentUnique(appName, containerName, content, connection))
 					{
 						content = HelperFunctions.GenerateUniqueName(content);
 					}

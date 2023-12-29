@@ -812,5 +812,179 @@ namespace SomiodAPI.Controllers
 				return InternalServerError();
 			}
 		}
+
+		// POST api/somiod/{appName}/{containerName}
+		[Route("{appName}/{containerName}")]
+		public IHttpActionResult Post(string appName, string containerName, [FromBody] XElement xmlInput)
+		{
+			try
+			{
+				if (xmlInput.Name == "subscription")
+				{
+					try
+					{
+						string subscriptionName = xmlInput.Element("name")?.Value;
+						string eventValue = xmlInput.Element("event")?.Value;
+						string endpoint = xmlInput.Element("endpoint")?.Value;
+
+						if (string.IsNullOrWhiteSpace(subscriptionName) || string.IsNullOrWhiteSpace(eventValue) || string.IsNullOrWhiteSpace(endpoint))
+						{
+							return BadRequest("Invalid XML format. 'name', 'event', and 'endpoint' elements are required for the subscription.");
+						}
+
+						if (eventValue != "1" && eventValue != "2")
+						{
+							return BadRequest("Invalid value for 'event'. It must be either '1' or '2'.");
+						}
+
+						using (SqlConnection connection = new SqlConnection(connStr))
+						{
+							connection.Open();
+
+							if (!HelperFunctions.IsDataContentUnique(appName, containerName, subscriptionName, connection))
+							{
+								subscriptionName = HelperFunctions.GenerateUniqueName(subscriptionName);
+							}
+
+							string insertQueryString = $"INSERT INTO subscriptions (name, parent, event, endpoint) " +
+								$"VALUES ('{subscriptionName}', (SELECT id FROM containers WHERE name = '{containerName}' " +
+								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')), '{eventValue}', '{endpoint}')";
+
+							string selectQueryString = $"SELECT * FROM subscriptions WHERE name = '{subscriptionName}' " +
+								$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
+								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
+
+							SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
+							SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+							try
+							{
+								int rowsAffected = insertCommand.ExecuteNonQuery();
+
+								if (rowsAffected > 0)
+								{
+									SqlDataReader reader = selectCommand.ExecuteReader();
+
+									if (reader.Read())
+									{
+										Subscription subscription = new Subscription
+										{
+											Id = (int)reader["id"],
+											Name = (string)reader["name"],
+											Creation_dt = (DateTime)reader["creation_dt"],
+											Event = (string)reader["event"],
+											Endpoint = (string)reader["endpoint"]
+										};
+
+										reader.Close();
+
+										XElement xmlData = new XElement("subscription",
+											new XElement("id", subscription.Id),
+											new XElement("name", subscription.Name),
+											new XElement("creation_dt", subscription.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
+											new XElement("event", subscription.Event),
+											new XElement("endpoint", subscription.Endpoint)
+										);
+
+										return Ok(xmlData);
+									}
+								}
+
+								return InternalServerError();
+							}
+							catch (Exception)
+							{
+								return InternalServerError();
+							}
+						}
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+				else if (xmlInput.Name == "data")
+				{
+					try
+					{
+						string content = xmlInput.Element("content")?.Value;
+
+						if (string.IsNullOrWhiteSpace(content))
+						{
+							return BadRequest("Invalid XML format. 'content' element is required.");
+						}
+
+						using (SqlConnection connection = new SqlConnection(connStr))
+						{
+							connection.Open();
+
+							if (!HelperFunctions.IsDataContentUnique(appName, containerName, content, connection))
+							{
+								content = HelperFunctions.GenerateUniqueName(content);
+							}
+
+							string insertQueryString = $"INSERT INTO data (content, parent) " +
+								$"VALUES ('{content}', (SELECT id FROM containers WHERE name = '{containerName}' " +
+								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')))";
+
+							string selectQueryString = $"SELECT * FROM data WHERE content = '{content}' " +
+								$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
+								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
+
+							SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
+							SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+							try
+							{
+								int rowsAffected = insertCommand.ExecuteNonQuery();
+
+								if (rowsAffected > 0)
+								{
+									SqlDataReader reader = selectCommand.ExecuteReader();
+
+									if (reader.Read())
+									{
+										Data dataItem = new Data
+										{
+											Id = (int)reader["id"],
+											Content = (string)reader["content"],
+											Creation_dt = (DateTime)reader["creation_dt"]
+										};
+
+										reader.Close();
+
+										XElement xmlData = new XElement("data",
+											new XElement("id", dataItem.Id),
+											new XElement("content", dataItem.Content),
+											new XElement("creation_dt", dataItem.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+										);
+
+										return Ok(xmlData);
+									}
+								}
+
+								return InternalServerError(new Exception("Failed to create data or retrieve data details."));
+							}
+							catch (Exception)
+							{
+								return InternalServerError();
+							}
+						}
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+				else
+				{
+					return BadRequest("Invalid XML format. 'subscription' or 'data' element is required.");
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
 	}
 }
