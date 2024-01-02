@@ -7,12 +7,16 @@ using System.Web.Http;
 using System.Xml.Linq;
 using SomiodAPI.Models;
 using SomiodAPI.Helpers;
+using System.Text;
+using uPLibrary.Networking.M2Mqtt;
 
 namespace SomiodAPI.Controllers
 {
 	[RoutePrefix("api/somiod")]
 	public class SomiodController : ApiController
-    {
+	{
+		MqttClient client = new MqttClient("127.0.0.1");
+
 		string connStr = Properties.Settings.Default.ConnStr;
 
 		// ----------------------------------------> APPLICATIONS <----------------------------------------
@@ -20,7 +24,7 @@ namespace SomiodAPI.Controllers
 		// GET: api/somiod
 		[Route("")]
 		public IHttpActionResult Get()
-        {
+		{
 			List<Application> applications = new List<Application>();
 			string queryString = "SELECT * FROM applications";
 
@@ -55,18 +59,18 @@ namespace SomiodAPI.Controllers
 						{
 							xmlData = new XElement("applications",
 							from app in applications
-								select new XElement("name", app.Name)
+							select new XElement("name", app.Name)
 							);
 						}
 						else
 						{
 							xmlData = new XElement("applications",
 							from app in applications
-								select new XElement("application",
-									new XElement("id", app.Id),
-									new XElement("name", app.Name),
-									new XElement("creation_dt", app.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
-								)
+							select new XElement("application",
+								new XElement("id", app.Id),
+								new XElement("name", app.Name),
+								new XElement("creation_dt", app.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+							)
 							);
 						}
 
@@ -437,7 +441,7 @@ namespace SomiodAPI.Controllers
 							return GetSubscriptionData(connection, appName, containerName);
 						}
 					}
-					
+
 					return GetContainer(connection, appName, containerName);
 				}
 			}
@@ -821,164 +825,187 @@ namespace SomiodAPI.Controllers
 			{
 				if (xmlInput.Name == "subscription")
 				{
-					try
-					{
-						string subscriptionName = xmlInput.Element("name")?.Value;
-						string eventValue = xmlInput.Element("event")?.Value;
-						string endpoint = xmlInput.Element("endpoint")?.Value;
-
-						if (string.IsNullOrWhiteSpace(subscriptionName) || string.IsNullOrWhiteSpace(eventValue) || string.IsNullOrWhiteSpace(endpoint))
-						{
-							return BadRequest("Invalid XML format. 'name', 'event', and 'endpoint' elements are required for the subscription.");
-						}
-
-						if (eventValue != "1" && eventValue != "2")
-						{
-							return BadRequest("Invalid value for 'event'. It must be either '1' or '2'.");
-						}
-
-						using (SqlConnection connection = new SqlConnection(connStr))
-						{
-							connection.Open();
-
-							if (!HelperFunctions.IsDataContentUnique(appName, containerName, subscriptionName, connection))
-							{
-								subscriptionName = HelperFunctions.GenerateUniqueName(subscriptionName);
-							}
-
-							string insertQueryString = $"INSERT INTO subscriptions (name, parent, event, endpoint) " +
-								$"VALUES ('{subscriptionName}', (SELECT id FROM containers WHERE name = '{containerName}' " +
-								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')), '{eventValue}', '{endpoint}')";
-
-							string selectQueryString = $"SELECT * FROM subscriptions WHERE name = '{subscriptionName}' " +
-								$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
-								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
-
-							SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
-							SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
-
-							try
-							{
-								int rowsAffected = insertCommand.ExecuteNonQuery();
-
-								if (rowsAffected > 0)
-								{
-									SqlDataReader reader = selectCommand.ExecuteReader();
-
-									if (reader.Read())
-									{
-										Subscription subscription = new Subscription
-										{
-											Id = (int)reader["id"],
-											Name = (string)reader["name"],
-											Creation_dt = (DateTime)reader["creation_dt"],
-											Event = (string)reader["event"],
-											Endpoint = (string)reader["endpoint"]
-										};
-
-										reader.Close();
-
-										XElement xmlData = new XElement("subscription",
-											new XElement("id", subscription.Id),
-											new XElement("name", subscription.Name),
-											new XElement("creation_dt", subscription.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
-											new XElement("event", subscription.Event),
-											new XElement("endpoint", subscription.Endpoint)
-										);
-
-										return Ok(xmlData);
-									}
-								}
-
-								return InternalServerError();
-							}
-							catch (Exception)
-							{
-								return InternalServerError();
-							}
-						}
-					}
-					catch (Exception)
-					{
-						return InternalServerError();
-					}
+					return PostSubscription(appName, containerName, xmlInput);
 				}
 				else if (xmlInput.Name == "data")
 				{
-					try
-					{
-						string content = xmlInput.Element("content")?.Value;
-
-						if (string.IsNullOrWhiteSpace(content))
-						{
-							return BadRequest("Invalid XML format. 'content' element is required.");
-						}
-
-						using (SqlConnection connection = new SqlConnection(connStr))
-						{
-							connection.Open();
-
-							if (!HelperFunctions.IsDataContentUnique(appName, containerName, content, connection))
-							{
-								content = HelperFunctions.GenerateUniqueName(content);
-							}
-
-							string insertQueryString = $"INSERT INTO data (content, parent) " +
-								$"VALUES ('{content}', (SELECT id FROM containers WHERE name = '{containerName}' " +
-								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')))";
-
-							string selectQueryString = $"SELECT * FROM data WHERE content = '{content}' " +
-								$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
-								$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
-
-							SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
-							SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
-
-							try
-							{
-								int rowsAffected = insertCommand.ExecuteNonQuery();
-
-								if (rowsAffected > 0)
-								{
-									SqlDataReader reader = selectCommand.ExecuteReader();
-
-									if (reader.Read())
-									{
-										Data dataItem = new Data
-										{
-											Id = (int)reader["id"],
-											Content = (string)reader["content"],
-											Creation_dt = (DateTime)reader["creation_dt"]
-										};
-
-										reader.Close();
-
-										XElement xmlData = new XElement("data",
-											new XElement("id", dataItem.Id),
-											new XElement("content", dataItem.Content),
-											new XElement("creation_dt", dataItem.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
-										);
-
-										return Ok(xmlData);
-									}
-								}
-
-								return InternalServerError(new Exception("Failed to create data or retrieve data details."));
-							}
-							catch (Exception)
-							{
-								return InternalServerError();
-							}
-						}
-					}
-					catch (Exception)
-					{
-						return InternalServerError();
-					}
+					return PostData(appName, containerName, xmlInput);
 				}
 				else
 				{
 					return BadRequest("Invalid XML format. 'subscription' or 'data' element is required.");
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		private IHttpActionResult PostSubscription(string appName, string containerName, XElement xmlInput)
+		{
+			try
+			{
+				string subscriptionName = xmlInput.Element("name")?.Value;
+				string eventValue = xmlInput.Element("event")?.Value;
+				string endpoint = xmlInput.Element("endpoint")?.Value;
+
+				if (string.IsNullOrWhiteSpace(subscriptionName) || string.IsNullOrWhiteSpace(eventValue) || string.IsNullOrWhiteSpace(endpoint))
+				{
+					return BadRequest("Invalid XML format. 'name', 'event', and 'endpoint' elements are required for the subscription.");
+				}
+
+				if (eventValue != "1" && eventValue != "2")
+				{
+					return BadRequest("Invalid value for 'event'. It must be either '1' or '2'.");
+				}
+
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					connection.Open();
+
+					if (!HelperFunctions.IsDataContentUnique(appName, containerName, subscriptionName, connection))
+					{
+						subscriptionName = HelperFunctions.GenerateUniqueName(subscriptionName);
+					}
+
+					string insertQueryString = $"INSERT INTO subscriptions (name, parent, event, endpoint) " +
+						$"VALUES ('{subscriptionName}', (SELECT id FROM containers WHERE name = '{containerName}' " +
+						$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')), '{eventValue}', '{endpoint}')";
+
+					string selectQueryString = $"SELECT * FROM subscriptions WHERE name = '{subscriptionName}' " +
+						$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
+						$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
+
+					SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+					try
+					{
+						int rowsAffected = insertCommand.ExecuteNonQuery();
+
+						if (rowsAffected > 0)
+						{
+							SqlDataReader reader = selectCommand.ExecuteReader();
+
+							if (reader.Read())
+							{
+								Subscription subscription = new Subscription
+								{
+									Id = (int)reader["id"],
+									Name = (string)reader["name"],
+									Creation_dt = (DateTime)reader["creation_dt"],
+									Event = (string)reader["event"],
+									Endpoint = (string)reader["endpoint"]
+								};
+
+								reader.Close();
+
+								XElement xmlData = new XElement("subscription",
+									new XElement("id", subscription.Id),
+									new XElement("name", subscription.Name),
+									new XElement("creation_dt", subscription.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss")),
+									new XElement("event", subscription.Event),
+									new XElement("endpoint", subscription.Endpoint)
+								);
+
+								return Ok(xmlData);
+							}
+						}
+
+						return InternalServerError();
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return InternalServerError();
+			}
+		}
+
+		private IHttpActionResult PostData(string appName, string containerName, XElement xmlInput)
+		{
+			try
+			{
+				string content = xmlInput.Element("content")?.Value;
+
+				if (string.IsNullOrWhiteSpace(content))
+				{
+					return BadRequest("Invalid XML format. 'content' element is required.");
+				}
+
+				using (SqlConnection connection = new SqlConnection(connStr))
+				{
+					connection.Open();
+
+					if (!HelperFunctions.IsDataContentUnique(appName, containerName, content, connection))
+					{
+						return Conflict();
+					}
+
+					// MQTT code: START
+					client.Connect(Guid.NewGuid().ToString());
+
+					if (!client.IsConnected)
+					{
+						return InternalServerError(new Exception("Server could not connect to broker."));
+					}
+
+					string topic = containerName;
+					byte[] msg = Encoding.UTF8.GetBytes(content);
+					client.Publish(topic, msg);
+					// MQTT code: END
+
+					string insertQueryString = $"INSERT INTO data (content, parent) " +
+						$"VALUES ('{content}', (SELECT id FROM containers WHERE name = '{containerName}' " +
+						$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')))";
+
+					string selectQueryString = $"SELECT * FROM data WHERE content = '{content}' " +
+						$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
+						$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
+
+					SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
+					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
+
+					try
+					{
+						int rowsAffected = insertCommand.ExecuteNonQuery();
+
+						if (rowsAffected > 0)
+						{
+							SqlDataReader reader = selectCommand.ExecuteReader();
+
+							if (reader.Read())
+							{
+								Data dataItem = new Data
+								{
+									Id = (int)reader["id"],
+									Content = (string)reader["content"],
+									Creation_dt = (DateTime)reader["creation_dt"]
+								};
+
+								reader.Close();
+
+								XElement xmlData = new XElement("data",
+									new XElement("id", dataItem.Id),
+									new XElement("content", dataItem.Content),
+									new XElement("creation_dt", dataItem.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
+								);
+
+								return Ok(xmlData);
+							}
+						}
+
+						return InternalServerError(new Exception("Failed to create data or retrieve data details."));
+					}
+					catch (Exception)
+					{
+						return InternalServerError();
+					}
 				}
 			}
 			catch (Exception)

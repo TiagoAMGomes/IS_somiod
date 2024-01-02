@@ -65,3 +65,5 @@ C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\Somiod\SomiodAP
 C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\Somiod\SomiodAPI\obj\Debug\SomiodAPI.csproj.CopyComplete
 C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\Somiod\SomiodAPI\obj\Debug\SomiodAPI.dll
 C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\Somiod\SomiodAPI\obj\Debug\SomiodAPI.pdb
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\Somiod\SomiodAPI\bin\M2Mqtt.Net.dll
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\Somiod\SomiodAPI\bin\M2Mqtt.Net.pdb

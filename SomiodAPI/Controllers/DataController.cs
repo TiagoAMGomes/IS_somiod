@@ -2,13 +2,9 @@
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Web.Http;
-using System.Web.UI.WebControls.WebParts;
 using System.Xml.Linq;
 using SomiodAPI.Models;
-using SomiodAPI.Helpers;
 
 namespace SomiodAPI.Controllers
 {
@@ -124,82 +120,6 @@ namespace SomiodAPI.Controllers
 							reader.Close();
 							return NotFound();
 						}
-					}
-					catch (Exception)
-					{
-						return InternalServerError();
-					}
-				}
-			}
-			catch (Exception)
-			{
-				return InternalServerError();
-			}
-		}
-
-		// POST: api/somiod/{appName}/{containerName}/data
-		[Route("{appName}/{containerName}/data")]
-		public IHttpActionResult Post(string appName, string containerName, [FromBody] XElement xmlInput)
-		{
-			try
-			{
-				string content = xmlInput.Element("content")?.Value;
-
-				if (string.IsNullOrWhiteSpace(content))
-				{
-					return BadRequest("Invalid XML format. 'content' element is required.");
-				}
-
-				using (SqlConnection connection = new SqlConnection(connStr))
-				{
-					connection.Open();
-
-					if (!HelperFunctions.IsDataContentUnique(appName, containerName, content, connection))
-					{
-						content = HelperFunctions.GenerateUniqueName(content);
-					}
-
-					string insertQueryString = $"INSERT INTO data (content, parent) " +
-						$"VALUES ('{content}', (SELECT id FROM containers WHERE name = '{containerName}' " +
-						$"AND parent = (SELECT id FROM applications WHERE name = '{appName}')))";
-
-					string selectQueryString = $"SELECT * FROM data WHERE content = '{content}' " +
-						$"AND parent = (SELECT id FROM containers WHERE name = '{containerName}' " +
-						$"AND parent = (SELECT id FROM applications WHERE name = '{appName}'))";
-
-					SqlCommand insertCommand = new SqlCommand(insertQueryString, connection);
-					SqlCommand selectCommand = new SqlCommand(selectQueryString, connection);
-
-					try
-					{
-						int rowsAffected = insertCommand.ExecuteNonQuery();
-
-						if (rowsAffected > 0)
-						{
-							SqlDataReader reader = selectCommand.ExecuteReader();
-
-							if (reader.Read())
-							{
-								Data dataItem = new Data
-								{
-									Id = (int)reader["id"],
-									Content = (string)reader["content"],
-									Creation_dt = (DateTime)reader["creation_dt"]
-								};
-
-								reader.Close();
-
-								XElement xmlData = new XElement("data",
-									new XElement("id", dataItem.Id),
-									new XElement("content", dataItem.Content),
-									new XElement("creation_dt", dataItem.Creation_dt.ToString("yyyy-MM-dd HH:mm:ss"))
-								);
-
-								return Ok(xmlData);
-							}
-						}
-
-						return InternalServerError(new Exception("Failed to create data or retrieve data details."));
 					}
 					catch (Exception)
 					{
