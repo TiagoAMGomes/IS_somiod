@@ -1,0 +1,11 @@
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\bin\Debug\ClientApp.exe.config
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\bin\Debug\ClientApp.exe
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\bin\Debug\ClientApp.pdb
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.csproj.AssemblyReference.cache
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.csproj.SuggestedBindingRedirects.cache
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.Form1.resources
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.Properties.Resources.resources
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.csproj.GenerateResource.cache
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.csproj.CoreCompileInputs.cache
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.exe
+C:\Users\USER\Desktop\[IS] Integração de Sistemas\3 - Projecto\ClientApp\ClientApp\obj\Debug\ClientApp.pdb
