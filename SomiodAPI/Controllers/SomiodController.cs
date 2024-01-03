@@ -955,7 +955,7 @@ namespace SomiodAPI.Controllers
 						return InternalServerError(new Exception("Server could not connect to broker."));
 					}
 
-					string topic = containerName;
+					string topic = $"{appName}/{containerName}";
 					byte[] msg = Encoding.UTF8.GetBytes(content);
 					client.Publish(topic, msg);
 					// MQTT code: END
